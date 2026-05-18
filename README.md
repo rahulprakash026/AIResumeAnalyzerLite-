@@ -1,3 +1,4 @@
+git add README.md
 # AI Resume Analyzer Lite
 
 A production-ready full-stack AI Resume Analyzer platform using Django, Flask, PostgreSQL, Redis, Celery, Docker, and Nginx.
@@ -36,3 +37,6 @@ This project is containerized using Docker and is ready to be deployed on any se
 
 ## CI/CD
 GitHub Actions is configured in `.github/workflows/ci.yml` to automatically lint code, run tests, and build Docker images on push to the `main` branch.
+=======
+# AIResumeAnalyzerLite-
+>>>>>>> 2b977fd013a8ca1c134fc8550a4fe1d7870ea0ff
