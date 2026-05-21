@@ -91,6 +91,18 @@ services:
     networks:
       - resume_network
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - resume_network
+
   nginx:
     image: nginx:1.25-alpine
     volumes:
@@ -102,6 +114,7 @@ services:
     depends_on:
       - django
       - flask-ai
+      - frontend
     networks:
       - resume_network
 
