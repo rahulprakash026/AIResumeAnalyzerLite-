@@ -7,21 +7,17 @@ import { resumeService } from '../services/api';
 
 const Analysis = () => {
   const { id } = useParams();
-  const [data, setData] = null; // We'll use mock data if API fails for demo
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   // Fallback mock data structure reflecting typical ATS feedback
   const mockData = {
     score: 78,
-    status: 'Good', // Excellent, Good, Fair, Poor
-    summary: "Your resume shows a strong background in frontend development, particularly with React. However, it lacks clear metrics for achievements and is missing some key backend skills mentioned in the job description.",
-    skillsMatched: ['React', 'JavaScript', 'HTML/CSS', 'Git', 'REST APIs'],
-    skillsMissing: ['Node.js', 'Docker', 'AWS', 'GraphQL'],
-    keywordMatch: [
-      { name: 'Matched', value: 65 },
-      { name: 'Missing', value: 35 }
-    ],
+    status: 'Good',
+    summary: "Your resume shows a strong background in frontend development, but could be improved.",
+    skillsMatched: ['React', 'JavaScript', 'HTML/CSS'],
+    skillsMissing: ['Node.js', 'Docker'],
     sectionScores: [
       { name: 'Experience', score: 85 },
       { name: 'Education', score: 90 },
@@ -34,13 +30,36 @@ const Analysis = () => {
     const fetchAnalysis = async () => {
       try {
         const response = await resumeService.getAnalysis(id);
-        // Map backend response to our UI state here
-        // setData(response)
+        
+        // Ensure we gracefully handle missing fields from the API
+        let parsedSkills = { extracted_skills: [], missing_skills: [] };
+        if (response.skills) {
+          if (typeof response.skills === 'string') {
+            try { parsedSkills = JSON.parse(response.skills); } catch (e) {}
+          } else {
+            parsedSkills = response.skills;
+          }
+        }
+
+        setData({
+          score: response.ats_score || 0,
+          status: response.status || 'PENDING',
+          summary: response.summary || "Analysis complete.",
+          skillsMatched: parsedSkills.extracted_skills || [],
+          skillsMissing: parsedSkills.missing_skills || [],
+          sectionScores: [
+            { name: 'Experience', score: response.ats_score ? Math.min(response.ats_score + 10, 100) : 0 },
+            { name: 'Education', score: response.ats_score ? Math.min(response.ats_score + 5, 100) : 0 },
+            { name: 'Skills', score: response.ats_score ? Math.max(response.ats_score - 10, 0) : 0 },
+            { name: 'Formatting', score: 85 },
+          ]
+        });
       } catch (err) {
         console.warn('API failed, using mock data for demo', err);
+        setError('Failed to load analysis. Using demo data.');
+        setData(mockData);
       } finally {
-        // Simulate network delay for demo
-        setTimeout(() => setLoading(false), 1500);
+        setLoading(false);
       }
     };
     
@@ -77,6 +96,12 @@ const Analysis = () => {
         </div>
       </div>
 
+      {error && (
+        <div className="bg-yellow-500/10 border border-yellow-500/50 text-yellow-500 p-4 rounded-xl">
+          {error}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Main Score Card */}
@@ -95,7 +120,7 @@ const Analysis = () => {
                 <Pie
                   data={[
                     { value: analysisData.score },
-                    { value: 100 - analysisData.score }
+                    { value: Math.max(100 - analysisData.score, 0) }
                   ]}
                   cx="50%"
                   cy="50%"
@@ -113,7 +138,7 @@ const Analysis = () => {
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-5xl font-bold" style={{ color: getScoreColor(analysisData.score) }}>
-                {analysisData.score}
+                {Math.round(analysisData.score)}
               </span>
               <span className="text-sm text-gray-400 mt-1">out of 100</span>
             </div>
@@ -123,9 +148,6 @@ const Analysis = () => {
             Status: <strong style={{ color: getScoreColor(analysisData.score) }}>{analysisData.status}</strong>
           </div>
           
-          <button className="w-full mt-8 btn-secondary flex items-center justify-center gap-2">
-            <Download size={18} /> Download Report
-          </button>
         </motion.div>
 
         {/* Summary & Section Scores */}
@@ -164,7 +186,7 @@ const Analysis = () => {
                   />
                   <Bar dataKey="score" radius={[0, 4, 4, 0]}>
                     {
-                      analysisData.sectionScores.map((entry, index) => (
+                      (analysisData.sectionScores || []).map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={getScoreColor(entry.score)} />
                       ))
                     }
@@ -188,10 +210,10 @@ const Analysis = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
             <h4 className="flex items-center gap-2 text-green-400 font-medium mb-4">
-              <CheckCircle size={20} /> Matched Skills ({analysisData.skillsMatched.length})
+              <CheckCircle size={20} /> Matched Skills ({(analysisData.skillsMatched || []).length})
             </h4>
             <div className="flex flex-wrap gap-2">
-              {analysisData.skillsMatched.map((skill, i) => (
+              {(analysisData.skillsMatched || []).map((skill, i) => (
                 <span key={i} className="px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-300 rounded-lg text-sm">
                   {skill}
                 </span>
@@ -201,21 +223,16 @@ const Analysis = () => {
 
           <div>
             <h4 className="flex items-center gap-2 text-red-400 font-medium mb-4">
-              <XCircle size={20} /> Missing Skills ({analysisData.skillsMissing.length})
+              <XCircle size={20} /> Missing Skills ({(analysisData.skillsMissing || []).length})
             </h4>
             <div className="flex flex-wrap gap-2">
-              {analysisData.skillsMissing.map((skill, i) => (
+              {(analysisData.skillsMissing || []).map((skill, i) => (
                 <span key={i} className="px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-300 rounded-lg text-sm">
                   {skill}
                 </span>
               ))}
             </div>
-            <div className="mt-4 flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-              <AlertTriangle size={20} className="text-yellow-500 shrink-0 mt-0.5" />
-              <p className="text-sm text-yellow-200">
-                Consider adding these missing skills to your resume if you have experience with them, to improve your ATS ranking.
-              </p>
-            </div>
+            
           </div>
         </div>
       </motion.div>
