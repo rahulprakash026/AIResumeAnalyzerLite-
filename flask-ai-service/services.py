@@ -1,8 +1,7 @@
 import os
 import io
+import json
 import PyPDF2
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 import openai
 
 # Set up OpenAI key (Optional, can fallback to mock if not provided)
@@ -22,60 +21,90 @@ def extract_text_from_pdf(file_bytes):
         print(f"Error extracting PDF: {e}")
         return ""
 
-def calculate_ats_score(resume_text, job_description):
-    """Calculates ATS score using cosine similarity."""
-    if not resume_text or not job_description:
-        return 0.0
+def analyze_resume_full(resume_text, job_description):
+    """
+    Analyzes the resume dynamically based on content, skills, experience, projects, 
+    education, and keywords matching the job description.
+    """
     
-    try:
-        vectorizer = TfidfVectorizer(stop_words='english')
-        tfidf_matrix = vectorizer.fit_transform([resume_text, job_description])
-        similarity = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
-        return round(similarity * 100, 2)
-    except Exception as e:
-        print(f"Error calculating ATS score: {e}")
-        return 0.0
-
-def extract_skills(resume_text):
-    """Extracts skills from resume text. Uses OpenAI if available, else mocks."""
     if not OPENAI_API_KEY or "your_openai_api_key_here" in OPENAI_API_KEY:
-        # Mock skill extraction
-        common_skills = ["Python", "Django", "Flask", "Docker", "AWS", "SQL", "PostgreSQL", "React", "JavaScript"]
-        found_skills = [skill for skill in common_skills if skill.lower() in resume_text.lower()]
-        return found_skills if found_skills else ["Communication", "Problem Solving"]
-    
+        # Fallback Mock Data if OpenAI API key is missing
+        return {
+            "score": 65,
+            "status": "Average",
+            "summary": "This is a mock analysis because no OpenAI key was provided. The candidate shows some relevant skills.",
+            "sections": {
+                "experience": 70,
+                "education": 80,
+                "skills": 60,
+                "formatting": 75
+            },
+            "matchedSkills": ["Python", "Mock Data"],
+            "missingSkills": ["Actual AI Analysis", "API Key"],
+            "recommendations": ["Add a valid OpenAI API Key to the .env file to enable dynamic AI analysis."],
+            "strengths": ["Basic formatting"],
+            "weaknesses": ["Missing core requirements"]
+        }
+
+    prompt = f"""
+You are an expert AI Resume Analyzer and senior technical recruiter. 
+Analyze the provided resume against the provided job description (if any).
+
+IMPORTANT RULES:
+1. Analyze dynamically based on the actual resume content, skills, experience, projects, education, and ATS optimization.
+2. The ATS score must accurately reflect the resume's quality and alignment with the job description.
+3. If the resume has strong projects, increase the project/experience score.
+4. If the resume lacks keywords from the job description, reduce the ATS score.
+5. If the formatting appears poor (based on text extraction coherence), reduce the formatting score.
+6. The executive summary must be realistic, highly personalized, and unique for this specific candidate.
+7. You MUST return your response ENTIRELY as a valid JSON object matching the exact format below, with NO markdown formatting, NO backticks, and NO additional text.
+
+JSON FORMAT:
+{{
+  "score": number (0-100),
+  "status": "Excellent" | "Good" | "Average" | "Poor",
+  "summary": "Personalized analysis summary",
+  "sections": {{
+    "experience": number (0-100),
+    "education": number (0-100),
+    "skills": number (0-100),
+    "formatting": number (0-100)
+  }},
+  "matchedSkills": ["skill1", "skill2"],
+  "missingSkills": ["skill3", "skill4"],
+  "recommendations": ["rec1", "rec2"],
+  "strengths": ["strength1", "strength2"],
+  "weaknesses": ["weakness1", "weakness2"]
+}}
+
+---
+JOB DESCRIPTION:
+{job_description}
+
+---
+RESUME TEXT:
+{resume_text[:4000]}
+"""
+
     try:
         response = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-3.5-turbo-1106",  # Use a model that supports JSON mode well
+            response_format={ "type": "json_object" },
             messages=[
-                {"role": "system", "content": "You are an expert ATS system. Extract a comma-separated list of technical and soft skills from the following resume text."},
-                {"role": "user", "content": resume_text[:2000]} # Limit to 2000 chars for cost
+                {"role": "system", "content": "You are a specialized JSON-generating AI."},
+                {"role": "user", "content": prompt}
             ],
-            max_tokens=50,
-            temperature=0.3
+            temperature=0.2, # Lower temperature for more consistent JSON structure
+            max_tokens=1500
         )
-        skills = response.choices[0].message.content.split(',')
-        return [s.strip() for s in skills if s.strip()]
+        
+        result_content = response.choices[0].message.content
+        parsed_json = json.loads(result_content)
+        return parsed_json
+        
+    except json.JSONDecodeError as e:
+        print(f"Error parsing OpenAI JSON response: {e}")
+        raise Exception("OpenAI returned invalid JSON.")
     except Exception as e:
-        print(f"Error extracting skills: {e}")
-        return [f"Error extracting skills: {str(e)}"]
-
-def generate_summary(resume_text):
-    """Generates a summary of the resume. Uses OpenAI if available, else mocks."""
-    if not OPENAI_API_KEY or "your_openai_api_key_here" in OPENAI_API_KEY:
-        return "This is a mock summary. The candidate has experience matching some of the keywords in the job description."
-    
-    try:
-        response = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are an expert recruiter. Provide a 2-3 sentence summary of the candidate's strengths based on the resume text."},
-                {"role": "user", "content": resume_text[:2000]}
-            ],
-            max_tokens=100,
-            temperature=0.5
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"Error generating summary: {e}")
-        return f"Could not generate summary: {str(e)}"
+        print(f"Error during OpenAI API call: {e}")
+        raise Exception(f"Failed to analyze resume: {str(e)}")

@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from services import extract_text_from_pdf, calculate_ats_score, extract_skills, generate_summary
+from services import extract_text_from_pdf, analyze_resume_full
 
 app = Flask(__name__)
 
@@ -28,16 +28,21 @@ def analyze_resume():
         if not resume_text:
             return jsonify({"error": "Could not extract text from PDF"}), 400
             
-        ats_score = calculate_ats_score(resume_text, job_description)
-        skills = extract_skills(resume_text)
-        summary = generate_summary(resume_text)
+        # Get full comprehensive JSON analysis from AI
+        analysis_json = analyze_resume_full(resume_text, job_description)
+        
+        # We return the exact data structure expected by Django Tasks
+        # Django task expects: ats_score, summary, skills
+        # We will map the AI's "score" to "ats_score", and pass the entire 
+        # rest of the JSON inside the "skills" object so it gets saved to the JSONField
         
         return jsonify({
             "status": "success",
             "data": {
-                "ats_score": ats_score,
-                "skills": skills,
-                "summary": summary
+                "ats_score": analysis_json.get("score", 0),
+                "summary": analysis_json.get("summary", "Analysis complete."),
+                # We save the full AI payload in the 'skills' JSONField in Django
+                "skills": analysis_json
             }
         }), 200
         
